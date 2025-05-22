@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Taiwan Wind Visualization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@8.8.19/dist.min.js"></script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 0; }
+    #controls {
+      position: absolute; top: 10px; left: 10px;
+      background: white; padding: 10px; border-radius: 5px;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>風場圖層: 
+      <select id="windLayer">
+        <option value="wind_JJA_day.geojson">夏季白天</option>
+        <option value="wind_JJA_night.geojson">夏季夜晚</option>
+        <option value="wind_DJF_day.geojson">冬季白天</option>
+        <option value="wind_DJF_night.geojson">冬季夜晚</option>
+        <option value="wind_JJA_avg.geojson">夏季平均</option>
+        <option value="wind_DJF_avg.geojson">冬季平均</option>
+      </select>
+    </label><br/>
+    <label>風向顯示: 
+      <select id="mode">
+        <option value="arrow">風向箭頭</option>
+        <option value="stream">流線動畫</option>
+      </select>
+    </label>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoidGVkbGl1IiwiYSI6ImNtMHAxMjdveDAwZWUya29sanY1c3Btc2EifQ.dGpYV4RZ4-OcpITjSKfcfg';
+    const bounds = [
+      [119.6, 21.6], // southwest corner
+      [122.4, 25.8]  // northeast corner
+    ];
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/light-v11',
+      center: [121, 23.8],
+      zoom: 6.5,
+      maxBounds: bounds
+    });
+
+    let deckOverlay;
+
+    map.on('load', () => {
+      loadGeojsonAndRender('wind_JJA_day.geojson');
+    });
+
+    function loadGeojsonAndRender(geojsonUrl) {
+      fetch(geojsonUrl)
+        .then(resp => resp.json())
+        .then(data => {
+          const mode = document.getElementById('mode').value;
+
+          let layer;
+          if (mode === 'arrow') {
+            layer = new deck.IconLayer({
+              id: 'wind-arrows',
+              data: data.features,
+              getPosition: d => d.geometry.coordinates,
+              getIcon: d => 'arrow',
+              iconAtlas: 'A_2D_digital_vector_illustration_features_a_right-.png',
+              iconMapping: {
+                arrow: { x: 0, y: 0, width: 64, height: 64, anchorX: 32, anchorY: 32, mask: true }
+              },
+              sizeScale: 2,
+              getSize: 6,
+              getAngle: d => Math.atan2(d.properties.v, d.properties.u) * 180 / Math.PI,
+              getColor: [0, 0, 255],
+              pickable: false
+            });
+          } else if (mode === 'stream') {
+            layer = new deck.ScatterplotLayer({
+              id: 'wind-stream-placeholder',
+              data: data.features,
+              getPosition: d => d.geometry.coordinates,
+              getFillColor: [255, 140, 0],
+              getRadius: 500,
+              radiusUnits: 'meters',
+              opacity: 0.5,
+              pickable: false
+            });
+          }
+
+          if (!deckOverlay) {
+            deckOverlay = new deck.MapboxOverlay({ layers: [layer] });
+            map.addControl(deckOverlay);
+          } else {
+            deckOverlay.setProps({ layers: [layer] });
+          }
+        });
+    }
+
+    document.getElementById('windLayer').addEventListener('change', (e) => {
+      loadGeojsonAndRender(e.target.value);
+    });
+
+    document.getElementById('mode').addEventListener('change', () => {
+      const currentLayer = document.getElementById('windLayer').value;
+      loadGeojsonAndRender(currentLayer);
+    });
+  </script>
+</body>
+</html>
