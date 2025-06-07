@@ -1,118 +1,175 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Taiwan Wind Visualization</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/deck.gl@8.8.19/dist.min.js"></script>
+  <meta charset="utf-8">
+  <title>Wind Field Visualization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; }
-    #map { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 0; }
-    #controls {
-      position: absolute; top: 10px; left: 10px;
-      background: white; padding: 10px; border-radius: 5px;
-      z-index: 1;
+    html, body, #map {
+      height: 100%; margin: 0; padding: 0;
+    }
+    .control {
+      position: absolute;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: white;
+      padding: 8px;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      font-family: sans-serif;
+    }
+    select {
+      margin: 0 5px;
     }
   </style>
 </head>
 <body>
-  <div id="controls">
-    <label>風場圖層: 
-      <select id="windLayer">
-        <option value="wind_JJA_day.geojson">夏季白天</option>
-        <option value="wind_JJA_night.geojson">夏季夜晚</option>
-        <option value="wind_DJF_day.geojson">冬季白天</option>
-        <option value="wind_DJF_night.geojson">冬季夜晚</option>
-        <option value="wind_JJA_avg.geojson">夏季平均</option>
-        <option value="wind_DJF_avg.geojson">冬季平均</option>
+  <div class="control">
+    <label>季節：
+      <select id="season">
+        <option value="DJF">冬季</option>
+        <option value="JJA">夏季</option>
       </select>
-    </label><br/>
-    <label>風向顯示: 
-      <select id="mode">
-        <option value="arrow">風向箭頭</option>
-        <option value="stream">流線動畫</option>
+    </label>
+    <label>時間：
+      <select id="time">
+        <option value="day">白天</option>
+        <option value="night">夜晚</option>
+        <option value="avg">平均</option>
       </select>
     </label>
   </div>
-
   <div id="map"></div>
 
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1IjoidGVkbGl1IiwiYSI6ImNtMHAxMjdveDAwZWUya29sanY1c3Btc2EifQ.dGpYV4RZ4-OcpITjSKfcfg';
-    const bounds = [
-      [119.6, 21.6], // southwest corner
-      [122.4, 25.8]  // northeast corner
-    ];
+  const map = L.map('map', {
+    minZoom: 8.2,
+    maxZoom: 14,
+    center: [23.7, 121],
+    zoom: 8.2
+  });
 
-    const map = new mapboxgl.Map({
-      container: 'map',
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [121, 23.8],
-      zoom: 6.5,
-      maxBounds: bounds
-    });
+  L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri, Maxar, Earthstar Geographics',
+    maxZoom: 20
+  }).addTo(map);
 
-    let deckOverlay;
+  let velocityLayer;
+  let currentData = null;
 
-    map.on('load', () => {
-      loadGeojsonAndRender('wind_JJA_day.geojson');
-    });
+  function getDisplayOptions(zoom) {
+  if (zoom < 9) {
+    return {
+      lineWidth: 1.5,
+      particleAge: 30,
+      particlesMultiplier: 0.15,
+      maxVelocity: 18,
+      velocityScale: 0.006
+    };
+  } else if (zoom < 10) {
+    return {
+      lineWidth: 1.5,
+      particleAge: 45,
+      particlesMultiplier: 0.3,
+      maxVelocity: 18,
+      velocityScale: 0.01
+    };
+  } else if (zoom < 11) {
+    return {
+      lineWidth: 1.5,
+      particleAge: 60,
+      particlesMultiplier: 0.5,
+      maxVelocity: 18,
+      velocityScale: 0.015
+    };
+  } else if (zoom < 12) {
+    return {
+      lineWidth: 1.5,
+      particleAge: 80,
+      particlesMultiplier: 0.8,
+      maxVelocity: 18,
+      velocityScale: 0.018
+    };
+  } else {
+    return {
+      lineWidth: 2.2,
+      particleAge: 100,
+      particlesMultiplier: 1.0,
+      maxVelocity: 4,
+      velocityScale: 0.02
+    };
+  }
+  }
 
-    function loadGeojsonAndRender(geojsonUrl) {
-      fetch(geojsonUrl)
-        .then(resp => resp.json())
-        .then(data => {
-          const mode = document.getElementById('mode').value;
+  function loadVelocityData(season, time) {
+    const zoom = map.getZoom();
+    let res = "native";
+    if (zoom < 9.2) res = "4x4";
+    else if (zoom < 11) res = "3x3";
 
-          let layer;
-          if (mode === 'arrow') {
-            layer = new deck.IconLayer({
-              id: 'wind-arrows',
-              data: data.features,
-              getPosition: d => d.geometry.coordinates,
-              getIcon: d => 'arrow',
-              iconAtlas: 'A_2D_digital_vector_illustration_features_a_right-.png',
-              iconMapping: {
-                arrow: { x: 0, y: 0, width: 64, height: 64, anchorX: 32, anchorY: 32, mask: true }
-              },
-              sizeScale: 2,
-              getSize: 6,
-              getAngle: d => Math.atan2(d.properties.v, d.properties.u) * 180 / Math.PI,
-              getColor: [0, 0, 255],
-              pickable: false
-            });
-          } else if (mode === 'stream') {
-            layer = new deck.ScatterplotLayer({
-              id: 'wind-stream-placeholder',
-              data: data.features,
-              getPosition: d => d.geometry.coordinates,
-              getFillColor: [255, 140, 0],
-              getRadius: 500,
-              radiusUnits: 'meters',
-              opacity: 0.5,
-              pickable: false
-            });
-          }
+    const url = `wind_${season}_${time}_${res}.json`;
 
-          if (!deckOverlay) {
-            deckOverlay = new deck.MapboxOverlay({ layers: [layer] });
-            map.addControl(deckOverlay);
-          } else {
-            deckOverlay.setProps({ layers: [layer] });
-          }
-        });
-    }
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {
+        currentData = data;
+        drawVelocityLayer();
+      })
+      .catch(err => console.error("❌ Windy data load failed:", err));
+  }
 
-    document.getElementById('windLayer').addEventListener('change', (e) => {
-      loadGeojsonAndRender(e.target.value);
-    });
+  function drawVelocityLayer() {
+  const zoom = map.getZoom();
+  const {
+    lineWidth,
+    particleAge,
+    particlesMultiplier,
+    maxVelocity,
+    velocityScale
+  } = getDisplayOptions(zoom);
 
-    document.getElementById('mode').addEventListener('change', () => {
-      const currentLayer = document.getElementById('windLayer').value;
-      loadGeojsonAndRender(currentLayer);
-    });
-  </script>
+  if (velocityLayer) map.removeLayer(velocityLayer);
+
+  velocityLayer = L.velocityLayer({
+    displayValues: true,
+    displayOptions: {
+      velocityType: '風速',
+      position: 'bottomleft',
+      emptyString: 'No wind data'
+    },
+    data: currentData,
+    maxVelocity,
+    minVelocity: 0.01,
+    velocityScale,
+    lineWidth,
+    particleAge,
+    particlesMultiplier
+  });
+
+  velocityLayer.addTo(map);
+  }
+
+  const seasonSelect = document.getElementById('season');
+  const timeSelect = document.getElementById('time');
+
+  function update() {
+    loadVelocityData(seasonSelect.value, timeSelect.value);
+  }
+
+  seasonSelect.onchange = update;
+  timeSelect.onchange = update;
+
+  map.on('zoomend', () => {
+    if (currentData) drawVelocityLayer();
+    else update();
+  });
+
+  update();
+</script>
+
 </body>
 </html>
