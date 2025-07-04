@@ -47,16 +47,40 @@
   <script src="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
   <script>
   const map = L.map('map', {
-    minZoom: 8.2,
-    maxZoom: 14,
+    minZoom: 8,
+    maxZoom: 12,
     center: [23.7, 121],
-    zoom: 8.2
+    zoom: 8
   });
 
   L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Esri, Maxar, Earthstar Geographics',
     maxZoom: 20
   }).addTo(map);
+
+  // === DEM 地形切圖圖層 ===
+  const demLayer = L.tileLayer('tiles_dem/{z}/{x}/{y}.png', {
+    opacity: 0.3,
+    minZoom: 8,
+    maxZoom: 12,
+    attribution: 'DEM'
+  }).addTo(map);
+
+  // === 建立圖層控制器 ===
+  const baseMaps = {
+    "衛星底圖": map._layers[Object.keys(map._layers)[0]]  // 預設底圖
+  };
+
+  const overlayMaps = {
+    "地形圖層": demLayer
+  };
+
+  // 圖層控制器加到右上角
+  const layerControl = L.control.layers(baseMaps, overlayMaps, {
+    collapsed: false,
+    position: 'topright'
+  }).addTo(map);
+
 
   let velocityLayer;
   let currentData = null;
@@ -123,35 +147,40 @@
   }
 
   function drawVelocityLayer() {
-  const zoom = map.getZoom();
-  const {
-    lineWidth,
-    particleAge,
-    particlesMultiplier,
-    maxVelocity,
-    velocityScale
-  } = getDisplayOptions(zoom);
+    const zoom = map.getZoom();
+    const {
+      lineWidth,
+      particleAge,
+      particlesMultiplier,
+      maxVelocity,
+      velocityScale
+    } = getDisplayOptions(zoom);
 
-  if (velocityLayer) map.removeLayer(velocityLayer);
+    if (velocityLayer) {
+      map.removeLayer(velocityLayer);
+      layerControl.removeLayer(velocityLayer);
+    }
 
-  velocityLayer = L.velocityLayer({
-    displayValues: true,
-    displayOptions: {
-      velocityType: '風速',
-      position: 'bottomleft',
-      emptyString: 'No wind data'
-    },
-    data: currentData,
-    maxVelocity,
-    minVelocity: 0.01,
-    velocityScale,
-    lineWidth,
-    particleAge,
-    particlesMultiplier
-  });
+    velocityLayer = L.velocityLayer({
+      displayValues: true,
+      displayOptions: {
+        velocityType: '風速',
+        position: 'bottomleft',
+        emptyString: 'No wind data'
+      },
+      data: currentData,
+      maxVelocity,
+      minVelocity: 0.01,
+      velocityScale,
+      lineWidth,
+      particleAge,
+      particlesMultiplier
+    });
 
-  velocityLayer.addTo(map);
+    velocityLayer.addTo(map);
+    layerControl.addOverlay(velocityLayer, '風場圖層');
   }
+
 
   const seasonSelect = document.getElementById('season');
   const timeSelect = document.getElementById('time');
