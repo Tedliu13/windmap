@@ -66,6 +66,20 @@
     attribution: 'DEM'
   }).addTo(map);
 
+    // 載入縣市邊界圖層
+  fetch("taiwan_county.geojson")
+    .then((res) => res.json())
+    .then((geojson) => {
+      L.geoJSON(geojson, {
+        style: {
+          color: "lightgray",
+          weight: 2,
+          fillColor: "white",
+          fillOpacity: 0.01
+        },
+      }).addTo(map);
+    });
+
   // === 建立圖層控制器 ===
   const baseMaps = {
     "衛星底圖": map._layers[Object.keys(map._layers)[0]]  // 預設底圖
@@ -97,8 +111,8 @@
   } else if (zoom < 10) {
     return {
       lineWidth: 1.5,
-      particleAge: 45,
-      particlesMultiplier: 0.3,
+      particleAge: 60,
+      particlesMultiplier: 0.5,
       maxVelocity: 18,
       velocityScale: 0.01
     };
